@@ -10,7 +10,12 @@ Installs a `.claude/agents/` directory with:
 ## Install
 
 ```bash
-cargo install --path .
+# From GitHub
+cargo install --git https://github.com/m0at/rusty-metal.git
+
+# From a local clone
+git clone https://github.com/m0at/rusty-metal.git
+cargo install --path rusty-metal
 ```
 
 ## Usage
@@ -28,7 +33,7 @@ Then in Claude Code:
 claude --agent metal
 ```
 
-The agent knows how to write Metal shaders, Rust GPU dispatch code, pick optimal kernels for workloads, fuse operations, build multi-step pipelines, and route large jobs to cloud compute when local hardware isn't enough.
+The agent writes Metal shaders, Rust GPU dispatch code, picks optimal kernels for workloads, fuses operations, builds multi-step pipelines, and routes large jobs to cloud compute when local hardware isn't enough.
 
 ## What's inside
 
@@ -38,31 +43,45 @@ Reductions, correlation, elementwise, ML activations, softmax, normalization, at
 
 ### Operation routing
 
-Decision tables that map operations + conditions to optimal kernel selections. Handles branching logic like:
-- `sort`: bitonic if n <= 32768 and power-of-2, else radix
-- `attention`: SDPA if seq < 2048, Flash otherwise
-- `spmv`: CSR if density < 5%, dense matvec otherwise
+Decision tables that map operations + conditions to optimal kernel selections:
+
+- `sort` — bitonic if n <= 32768 and power-of-2, else radix
+- `attention` — SDPA if seq < 2048, Flash otherwise
+- `spmv` — CSR if density < 5%, dense matvec otherwise
 
 ### Fusion patterns
 
-Identifies when consecutive operations should merge into single kernels (softmax 4-op, layernorm 4-op, attention 5-op, activation+dropout, loss+backward).
+Identifies when consecutive operations should merge into single kernels: softmax (4-op), layernorm (4-op), attention (5-op), activation+dropout, loss+backward.
 
 ### Pipeline recipes
 
 14 end-to-end GPU pipelines: vector search, ETL, transformer inference, training step, spectral analysis, signal processing, N-body simulation, PDE solver, data analysis, recommendation, diffusion model, scientific computing.
 
+### Compute routing
+
+A state machine that evaluates workload size, parallelism, memory requirements, and hardware ceilings to recommend the right execution target — local Metal, local CPU with rayon, or cloud (Lambda H100, DigitalOcean fleet, AWS multi-node) — with cost and time estimates.
+
+## How it works
+
+The agent prompt and kernel reference live in `content/` as markdown files. They're embedded into the binary at compile time via `include_str!`, so the CLI is a single zero-dependency binary with no runtime file access needed. Running `rusty-metal init` writes them into your project's `.claude/agents/` directory where Claude Code picks them up.
+
 ## Contributing
 
-The kernel catalog and agent prompt live in `content/`. Edit those files and rebuild — they're embedded at compile time via `include_str!`.
+Edit files in `content/` and rebuild — changes are picked up automatically.
 
-Areas where contributions are welcome:
+| File | What it contains |
+|------|-----------------|
+| `content/metal-agent.md` | Agent system prompt, dispatch conventions, performance rules, compute routing state machine |
+| `content/metal-kernel-hints.md` | Kernel catalog, operation routing tables, fusion patterns, implementation hints, pipeline recipes |
 
-- New kernel domains (e.g., graph algorithms, image processing)
-- Additional pipeline recipes
-- Improved performance data from real benchmarks on specific Apple Silicon chips
+Contributions welcome:
+
+- New kernel domains (graph algorithms, image processing, cryptography)
+- Additional pipeline recipes for common workloads
+- Performance data from real benchmarks on specific Apple Silicon chips (M1–M5)
 - Compute routing refinements (new cloud providers, updated pricing)
 - Metal shader best practices and Apple GPU architecture notes
 
 ## License
 
-MIT
+[MIT](LICENSE)
