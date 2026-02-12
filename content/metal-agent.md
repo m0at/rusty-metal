@@ -155,9 +155,174 @@ Metal on Apple Silicon is excellent for interactive, single-machine workloads. B
 | M3 Max MBP | 36-128 GB | 40 | ~400 GB/s | Serious local compute, models up to ~30B params quantized |
 | M5 MBP | 24 GB | 10 | ~200 GB/s | Mid-range — great for kernels, limited by RAM for large models |
 
+### System health monitor
+
+Before entering the compute routing state machine and during long-running workloads, probe the system to understand available headroom. All commands are lightweight (< 50ms) and require no sudo.
+
+#### Pre-flight probe (run before every workload)
+
+```bash
+# 1. Memory pressure — single most important signal
+memory_pressure | head -1
+# Returns: "The system has X memory pressure" where X = normal | warn | critical
+
+# 2. Available memory (bytes) — how much the OS will give a new process
+sysctl -n kern.memorystatus_level
+# Returns: percentage (0-100) of memory available before pressure
+
+# 3. Current memory breakdown (pages — multiply by 16384 for bytes on Apple Silicon)
+vm_stat | head -8
+
+# 4. Thermal throttling — is the CPU being slowed?
+pmset -g therm
+# Key line: "CPU_Speed_Limit = N" where N=100 means no throttle, <100 means throttled
+
+# 5. Power source — battery vs AC affects sustained performance
+pmset -g ps | head -1
+# "AC Power" or "Battery Power"
+
+# 6. CPU load — are other processes already saturating the machine?
+sysctl -n vm.loadavg
+# Returns: { X.XX Y.XX Z.XX } — 1/5/15 min load averages
+
+# 7. Top memory consumers — detect if something else is eating RAM
+ps -A -o rss=,comm= | sort -rn | head -5
+# Returns: RSS (KB) and process name for top 5
+```
+
+#### Pre-flight health variables
+
+Compute these from the probe results:
+
+```
+mem_pressure        = "normal" | "warn" | "critical"    (from memory_pressure)
+mem_available_pct   = kern.memorystatus_level            (0-100)
+cpu_speed_limit     = CPU_Speed_Limit from pmset -g therm (0-100, 100 = no throttle)
+power_source        = "AC" | "battery"                   (from pmset -g ps)
+load_avg_1min       = first value from vm.loadavg
+num_cores           = 10  (M5: 4P + 6E)
+cpu_saturation      = load_avg_1min / num_cores          (>0.8 = busy, >1.0 = overloaded)
+top_process_rss_gb  = largest RSS from ps / 1048576      (biggest memory hog)
+```
+
+#### Pre-flight gate (evaluate before S0)
+
+```
+GATE: HEALTH_CHECK
+  │
+  ├─ mem_pressure = "critical"
+  │    → BLOCK: Do NOT launch workload.
+  │    Tell user: "System memory is critical — {top_process_rss_gb:.1f} GB used by
+  │    {top_process_name}. Close applications or reduce working set before proceeding."
+  │
+  ├─ mem_pressure = "warn" AND data_size_gb > mem_available_pct/100 * machine_ram_gb * 0.5
+  │    → WARN then proceed: "Memory pressure is elevated. This workload may cause
+  │    swapping and degrade the entire system. Consider closing {top_process_name}
+  │    ({top_process_rss_gb:.1f} GB) first."
+  │
+  ├─ cpu_speed_limit < 70
+  │    → WARN: "CPU is thermally throttled to {cpu_speed_limit}% speed.
+  │    Performance will be significantly degraded. Move the laptop to a hard,
+  │    ventilated surface — not a lap, bed, or couch. A fan pad or elevated
+  │    stand will help. Wait 2-3 minutes for thermals to recover before launching
+  │    heavy compute."
+  │
+  ├─ cpu_speed_limit < 90 AND power_source = "battery"
+  │    → WARN: "Running on battery with mild thermal throttle ({cpu_speed_limit}%).
+  │    Plug in for sustained performance — battery mode caps power delivery."
+  │
+  ├─ power_source = "battery" AND local_time_hours > 0.5
+  │    → WARN: "This workload will run {local_time_hours:.1f}h on battery.
+  │    Plug in to avoid throttling and battery drain."
+  │
+  ├─ cpu_saturation > 1.0
+  │    → WARN: "CPU is overloaded (load {load_avg_1min:.1f} across {num_cores} cores).
+  │    Other processes are competing for resources. Runtime estimates may be 2-3x longer
+  │    than normal."
+  │
+  └─ all checks pass
+       → Proceed to S0: ENTRY
+```
+
+#### Runtime monitor (for workloads > 60 seconds)
+
+For any workload estimated at > 60 seconds, emit monitoring code that checks system health during execution. The monitor runs in a background thread and reports issues without killing the workload.
+
+**Check interval**: every 30 seconds for workloads < 10 min, every 2 minutes for longer.
+
+**What to check at each interval:**
+
+```bash
+# Quick thermal + memory check (< 10ms total)
+pmset -g therm 2>/dev/null | grep CPU_Speed_Limit
+memory_pressure | head -1
+```
+
+**Runtime thresholds and actions:**
+
+| Condition | Action |
+|-----------|--------|
+| `CPU_Speed_Limit` drops below 60 | Log warning: "Thermal throttle at {N}%. Compute is slowed. Ensure ventilation." |
+| `CPU_Speed_Limit` drops below 40 | Log warning: "Heavy thermal throttle ({N}%). Move laptop to a cool, hard surface immediately — not your lap." |
+| Memory pressure changes to "warn" | Log warning: "Memory pressure rising. System may become sluggish." |
+| Memory pressure changes to "critical" | Log warning: "Memory critical — system will be unresponsive. Consider terminating workload." |
+| Process RSS exceeds 70% of `machine_ram_gb` | Log warning: "Process using {rss_gb:.1f} GB of {machine_ram_gb} GB. Approaching memory ceiling." |
+
+**Rust implementation pattern for the runtime monitor:**
+
+```rust
+use std::process::Command;
+use std::thread;
+use std::time::Duration;
+
+fn spawn_health_monitor(interval_secs: u64) -> thread::JoinHandle<()> {
+    thread::spawn(move || {
+        loop {
+            thread::sleep(Duration::from_secs(interval_secs));
+
+            // Thermal check
+            if let Ok(output) = Command::new("pmset").args(["-g", "therm"]).output() {
+                let s = String::from_utf8_lossy(&output.stdout);
+                if let Some(line) = s.lines().find(|l| l.contains("CPU_Speed_Limit")) {
+                    if let Some(val) = line.split('=').nth(1).and_then(|v| v.trim().parse::<u32>().ok()) {
+                        if val < 60 {
+                            eprintln!("[monitor] thermal throttle: CPU at {}% — ensure ventilation", val);
+                        }
+                    }
+                }
+            }
+
+            // Memory pressure check
+            if let Ok(output) = Command::new("memory_pressure").output() {
+                let s = String::from_utf8_lossy(&output.stdout);
+                if s.contains("critical") {
+                    eprintln!("[monitor] memory pressure CRITICAL — system may be unresponsive");
+                } else if s.contains("warn") {
+                    eprintln!("[monitor] memory pressure elevated — system may be sluggish");
+                }
+            }
+        }
+    })
+}
+```
+
+#### Cooling and placement guidance
+
+When thermal warnings trigger, tell the user:
+
+1. **Move the laptop to a hard, flat surface** — desk, table, or countertop. Never a lap, bed, blanket, or couch cushion (blocks bottom vents).
+2. **Use a fan pad or laptop stand** if available — even a few cm of elevation helps airflow.
+3. **Close the lid partially** if using an external display — reduces heat from the display backlight.
+4. **Kill background GPU consumers** — browsers with WebGL, video playback, screen recording.
+5. **Wait 2-3 minutes** after a thermal warning before launching heavy compute — let the SoC cool below throttle threshold.
+
+For sustained compute (> 30 minutes), always recommend AC power and a ventilated surface upfront, before the workload starts.
+
 ### Compute routing state machine
 
 Every workload enters at `S0` and follows transitions to exactly one terminal state. No ambiguity — evaluate predicates top to bottom, take the first true branch.
+
+**Prerequisite**: The system health monitor pre-flight gate (above) MUST pass before entering S0. If the gate blocks, resolve the issue first.
 
 #### Inputs (compute these first)
 
@@ -391,6 +556,20 @@ T6: DO_FLEET
 **Example 5: elementwise sigmoid over 200 floats**
 - item_count = 200 < 1000, data_size_gb ≈ 0 → T0: CPU_INLINE
 - Don't even dispatch a Metal kernel. Do it in Rust.
+
+**Example 6: large FFT on a warm laptop running on battery**
+- Pre-flight probe: cpu_speed_limit = 78, power_source = "battery", mem_pressure = "normal"
+- Gate: cpu_speed_limit < 90 AND battery → WARN: "Running on battery with mild throttle (78%). Plug in for sustained performance."
+- local_time_hours = 0.3 (18 minutes) AND battery → WARN: "This workload will run 0.3h on battery. Plug in."
+- User plugs in, waits 2 min, re-probe: cpu_speed_limit = 100 → gate passes → S0 → T1: LOCAL_METAL
+- Runtime monitor: check every 30s, thermal stays above 80% → no warnings emitted.
+
+**Example 7: simulation that will eat all available RAM**
+- Pre-flight probe: mem_pressure = "warn", top_process = "Google Chrome" at 6.2 GB
+- data_size_gb = 14 GB, machine_ram_gb = 24 GB
+- Gate: mem_pressure = "warn" AND 14 > (45/100 * 24 * 0.5) = 5.4 → WARN: "Memory pressure elevated. Consider closing Google Chrome (6.2 GB) first."
+- User closes Chrome, re-probe: mem_pressure = "normal" → gate passes
+- S0 → data fits in 70% ceiling → T1: LOCAL_METAL
 
 ### Output format
 
