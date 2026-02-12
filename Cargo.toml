@@ -2,8 +2,11 @@
 name = "rusty-metal"
 version = "0.1.0"
 edition = "2021"
-description = "Install Metal GPU compute agent + kernel reference for Claude Code"
+rust-version = "1.70"
+description = "Metal GPU compute agent for Claude Code — 109 kernels, operation routing, fusion patterns, pipeline recipes"
 license = "MIT"
-repository = "https://github.com/andyjakubowski/rusty-metal"
+repository = "https://github.com/m0at/rusty-metal"
+keywords = ["metal", "gpu", "apple-silicon", "claude-code", "compute"]
+categories = ["command-line-utilities", "development-tools"]
 
 [dependencies]
