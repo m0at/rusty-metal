@@ -1,0 +1,9 @@
+[package]
+name = "rusty-metal"
+version = "0.1.0"
+edition = "2021"
+description = "Install Metal GPU compute agent + kernel reference for Claude Code"
+license = "MIT"
+repository = "https://github.com/andyjakubowski/rusty-metal"
+
+[dependencies]
