@@ -61,6 +61,10 @@ Identifies when consecutive operations should merge into single kernels: softmax
 
 A state machine that evaluates workload size, parallelism, memory requirements, and hardware ceilings to recommend the right execution target — local Metal, local CPU with rayon, or cloud (Lambda H100, DigitalOcean fleet, AWS multi-node) — with cost and time estimates.
 
+### System health monitor
+
+A pre-flight gate and runtime watchdog that probes memory pressure, thermal throttling, CPU load, and power source before and during workloads — all via lightweight no-sudo macOS commands (< 50ms). Blocks launches when memory is critical, warns about thermal throttling with cooling/placement guidance, and monitors long-running workloads in a background thread.
+
 ## How it works
 
 The agent prompt and kernel reference live in `content/` as markdown files. They're embedded into the binary at compile time via `include_str!`, so the CLI is a single zero-dependency binary with no runtime file access needed. Running `rusty-metal init` writes them into your project's `.claude/agents/` directory where Claude Code picks them up.
