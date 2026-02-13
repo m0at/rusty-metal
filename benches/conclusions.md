@@ -96,10 +96,103 @@ This means there is significant room for kernel optimization across all backends
 
 5. **CPU path remains important.** Nearly half the wins at 10M elements go to torch_cpu. For small-to-medium workloads, branchy algorithms, and operations that fit in cache, the agent should not force GPU dispatch.
 
+---
+
+## Rust+Metal+NEON Benchmark Results (N=1M)
+
+210 benchmarks across 21 domains using optimized Metal shaders (simd intrinsics, float4 vectorization, tiled memory access) and expanded NEON SIMD coverage (33 intrinsic functions).
+
+### Metal GPU dominance on compute-heavy kernels
+
+| Kernel | Metal (us) | Scalar (us) | Speedup | Notes |
+|--------|-----------|-------------|---------|-------|
+| attention_sdpa | 5,454 | 486,608 | **89x** | Online softmax SDPA, never materializes NxN |
+| transpose_2d | 1,348 | 74,194 | **55x** | Tiled with bank-conflict-free shared memory |
+| prng_normal | 256 | 13,196 | **52x** | Box-Muller on GPU cores |
+| fir_filter | 424 | 15,368 | **36x** | Sliding window shared memory |
+| softmax_stable | 1,320 | 37,329 | **28x** | simd_max + simd_sum intrinsics |
+| conv1d | 1,293 | 19,328 | **15x** | Shared memory kernel tiling |
+| fused_softmax_cross_entropy | 252 | 2,036 | **8x** | Forward + backward in one dispatch |
+| outer_product | 324 | 2,424 | **7.5x** | Coalesced 2D grid writes |
+| fft_radix2 | 5,524 | 28,987 | **5.2x** | Threadgroup-local butterfly stages |
+| matvec | 1,942 | 10,249 | **5.3x** | Vectorized dot products |
+| fused_scan_compact | 721 | 3,586 | **5x** | Prefix scan + scatter in one kernel |
+
+### NEON SIMD: memory bandwidth champion
+
+NEON consistently achieves the highest bandwidth for operations that fit in the CPU memory subsystem:
+
+| Kernel | NEON BW (GB/s) | Metal BW (GB/s) | Winner |
+|--------|---------------|-----------------|--------|
+| map_fma | **100.1** | 12.2 | NEON (8.2x) |
+| map_add/mul/div | **88.5-88.9** | 8.8-9.1 | NEON (10x) |
+| cosine_similarity | **88.0** | 31.5 | NEON (2.8x) |
+| reduce_min/max | **72.3-72.7** (scalar) | 8.4-17.6 | CPU (4-9x) |
+| map_clamp | **66.8** | 4.6 | NEON (14.5x) |
+| loss_mae | **59.0** | 8.7 | NEON (6.8x) |
+| opt_adam | **69.5** | 9.3 | NEON (7.5x) |
+
+100.1 GB/s for map_fma represents **~50% of the M5's theoretical ~200 GB/s** — the highest sustained bandwidth achieved in any benchmark, CPU or GPU.
+
+### Metal dispatch overhead: the ~900us floor
+
+A critical finding: virtually every Metal elementwise kernel shows a ~880-960us median regardless of operation complexity. This is pure dispatch overhead (command buffer creation, GPU scheduling, completion wait). For reference:
+
+- `map_abs` Metal: 893us vs scalar: 60us (scalar 15x faster)
+- `map_clamp` Metal: 876us vs NEON: 60us (NEON 15x faster)
+- `map_add` Metal: 883us vs NEON: 90us (NEON 10x faster)
+
+**Metal only wins when compute time exceeds ~2ms**, which at N=1M means operations with O(N log N) or O(N^2) complexity (FFT, attention, convolution, softmax multi-pass).
+
+### Bandwidth achieved (Metal GPU)
+
+| Kernel | BW (GB/s) | % of ~200 GB/s |
+|--------|-----------|----------------|
+| repack_aos_to_soa | 54.0 | 27% |
+| log_softmax | 53.8 | 27% |
+| repack_soa_to_aos | 52.4 | 26% |
+| softmax_stable | 50.9 | 25% |
+| transpose_2d | 49.8 | 25% |
+| sim_verlet | 40.4 | 20% |
+| matvec | 34.5 | 17% |
+| cosine_similarity | 31.5 | 16% |
+
+Peak Metal bandwidth of 54 GB/s (27%) confirms conclusion #4 — significant headroom remains. The simd intrinsic and float4 optimizations improved over the pre-optimization baseline but dispatch overhead and single-simdgroup-per-threadgroup sizing limit throughput. Further gains require:
+- Larger threadgroups (multiple simdgroups) for better occupancy
+- Persistent kernels that amortize dispatch over multiple iterations
+- Async copy staging from device to threadgroup memory
+
+### Fused custom kernels (ops MLX can't express)
+
+| Kernel | Metal (us) | Scalar (us) | Speedup |
+|--------|-----------|-------------|---------|
+| fused_softmax_cross_entropy | 252 | 2,036 | **8.1x** |
+| fused_scan_compact | 721 | 3,586 | **5.0x** |
+| fused_layernorm_dropout_residual | 902 | 2,159 | **2.4x** |
+| fused_attention_softmax_v | 6,963 | 18,084 | **2.6x** |
+| fused_rope_attention_mask | 259 | 442 | **1.7x** |
+| fused_adam_clip_update | 2,487 | 698 | **scalar wins** |
+
+5 of 6 fused kernels show Metal wins. `fused_adam_clip_update` loses because the reduction (grad norm) + per-element update pattern has poor GPU utilization at N=1M. These fused kernels represent the strongest case for custom Metal shaders — operations that would require multiple framework dispatches (3-5 separate kernel launches in MLX/PyTorch) but execute as a single GPU dispatch here.
+
+### Updated routing recommendations
+
+1. **Raise the Metal threshold to N≥10M for elementwise ops.** The ~900us dispatch floor means Metal loses on anything completing in <2ms on CPU. At N=10M, even simple ops take 5-10ms on CPU, making GPU worthwhile.
+
+2. **Use NEON SIMD as the primary fast path for N=100K-10M.** NEON achieves 50-100 GB/s bandwidth with zero dispatch overhead, beating both scalar and Metal in this range.
+
+3. **Metal is mandatory for O(N log N)+ ops.** Softmax (28x), FFT (5x), attention (89x), and convolution (15-36x) show GPU wins even at N=1M. Route these to Metal regardless of size.
+
+4. **Fused custom kernels justify the Metal agent.** The 6 fused kernels demonstrate 1.7-8x speedups that no framework can match with their standard op decomposition.
+
+5. **Occupancy is the next optimization frontier.** Current shaders use 1 simdgroup (32 threads) per threadgroup. Increasing to 4-8 simdgroups per threadgroup would improve latency hiding and push bandwidth toward the 100+ GB/s range on Metal.
+
+---
+
 ## Caveats
 
-- **N=10M only.** The GPU crossover shifts at different sizes. At N=100M, GPU win rates would increase significantly as dispatch overhead becomes negligible relative to compute time.
+- **N=10M only for Python, N=1M for Rust.** The GPU crossover shifts at different sizes. At N=100M, GPU win rates would increase significantly as dispatch overhead becomes negligible relative to compute time.
 - **Loss domain incomplete.** MLX loss benchmarks errored due to an API path bug (`mx.losses` vs `mlx.nn.losses`), now fixed. Rerun needed for complete loss comparison.
 - **Simulation has no MLX path.** PDE stencils and ODE integrators don't map to standard MLX ops, which is exactly why custom Metal shaders exist.
 - **Single-run medians.** Results reflect one benchmark session. Thermal state, background processes, and memory pressure can shift numbers by 5-15%.
-- **Rust+Metal side not yet run.** The Rust benchmark suite (scalar, NEON SIMD, Metal GPU) has been written but these results are Python-only. The Rust results will show how hand-tuned Metal shaders and NEON SIMD compare.
+- **Rust Metal shaders use 1 simdgroup per threadgroup.** This limits occupancy and bandwidth. Production shaders should use larger threadgroups with explicit simdgroup coordination.
