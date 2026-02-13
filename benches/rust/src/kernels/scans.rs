@@ -4,6 +4,7 @@ use crate::harness::{bench_fn, BenchSuite};
 use crate::metal_ctx::MetalCtx;
 use crate::shaders;
 use rand::Rng;
+use std::hint::black_box;
 
 pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, n: usize) {
     let mut rng = rand::thread_rng();
@@ -19,7 +20,7 @@ pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, n: usize) {
             out[i] = acc;
             acc = acc.wrapping_add(data_u32[i]);
         }
-        let _ = out;
+        black_box(out);
     }, n, 4));
 
     // --- Scalar Rust: inclusive scan ---
@@ -30,18 +31,18 @@ pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, n: usize) {
             acc = acc.wrapping_add(data_u32[i]);
             out[i] = acc;
         }
-        let _ = out;
+        black_box(out);
     }, n, 4));
 
     // --- Scalar Rust: compact_mask ---
     suite.add(bench_fn("compact_mask", "scans", "rust_scalar", || {
-        let _: Vec<f32> = data_f32.iter().zip(&mask).filter(|(_, &m)| m == 1).map(|(&v, _)| v).collect();
+        black_box::<Vec<f32>>(data_f32.iter().zip(&mask).filter(|(_, &m)| m == 1).map(|(&v, _)| v).collect());
     }, n, 4));
 
     // --- Scalar Rust: compact_if ---
     let threshold = 0.0f32;
     suite.add(bench_fn("compact_if", "scans", "rust_scalar", || {
-        let _: Vec<f32> = data_f32.iter().filter(|&&v| v > threshold).cloned().collect();
+        black_box::<Vec<f32>>(data_f32.iter().filter(|&&v| v > threshold).cloned().collect());
     }, n, 4));
 
     // --- Metal GPU (scans need power-of-2 threadgroup sizes) ---

@@ -102,8 +102,8 @@ pub fn bench_fn<F: FnMut()>(
     let mut times = time_fn(f);
     times.sort_by(|a, b| a.partial_cmp(b).unwrap());
 
-    let median = times[times.len() / 2];
-    let min = times[0];
+    let median = times[times.len() / 2].max(0.001); // floor at 1ns to avoid inf
+    let min = times[0].max(0.001);
     let max = times[times.len() - 1];
     let throughput = n as f64 / median; // Melem/s (elements per µs)
     let bw = (n * elem_bytes) as f64 / (median * 1e-6) / 1e9; // GB/s

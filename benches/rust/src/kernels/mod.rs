@@ -18,3 +18,4 @@ pub mod scans;
 pub mod quantization;
 pub mod dot_products;
 pub mod fused;
+pub mod fused_custom;

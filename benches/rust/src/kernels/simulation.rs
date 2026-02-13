@@ -4,6 +4,7 @@ use crate::harness::{bench_fn, BenchSuite};
 use crate::metal_ctx::MetalCtx;
 use crate::shaders;
 use rand::Rng;
+use std::hint::black_box;
 
 pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, _n: usize) {
     let mut rng = rand::thread_rng();
@@ -28,7 +29,7 @@ pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, _n: usize) {
                 next[idx] = center + alpha * (left + right + up + down - 4.0 * center);
             }
         }
-        let _ = next;
+        black_box(next);
     }, total, 4));
 
     // Wave equation
@@ -43,7 +44,7 @@ pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, _n: usize) {
                 next[idx] = 2.0 * grid[idx] - grid_prev[idx] + c2 * laplacian;
             }
         }
-        let _ = next;
+        black_box(next);
     }, total, 4));
 
     // --- 1D ODE ---
@@ -53,13 +54,13 @@ pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, _n: usize) {
 
     // RK4
     suite.add(bench_fn("integrate_rk4", "simulation", "rust_scalar", || {
-        let _: Vec<f32> = y.iter().map(|&yi| {
+        black_box::<Vec<f32>>(y.iter().map(|&yi| {
             let k1 = -yi;
             let k2 = -(yi + 0.5 * dt * k1);
             let k3 = -(yi + 0.5 * dt * k2);
             let k4 = -(yi + dt * k3);
             yi + (dt / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4)
-        }).collect();
+        }).collect());
     }, ode_n, 4));
 
     // Verlet
@@ -74,13 +75,13 @@ pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, _n: usize) {
             let a_new = -pos[i];
             v[i] += 0.5 * (a + a_new) * dt;
         }
-        let _ = (pos, v);
+        black_box((pos, v));
     }, ode_n, 12));
 
     // Monte Carlo (pi estimation)
     let random_x: Vec<f32> = (0..ode_n).map(|_| rng.gen_range(0.0..1.0)).collect();
     suite.add(bench_fn("monte_carlo_integrate", "simulation", "rust_scalar", || {
-        let _: Vec<f32> = random_x.iter().map(|&x| 4.0 / (1.0 + x * x)).collect();
+        black_box::<Vec<f32>>(random_x.iter().map(|&x| 4.0 / (1.0 + x * x)).collect());
     }, ode_n, 4));
 
     // --- Metal GPU ---

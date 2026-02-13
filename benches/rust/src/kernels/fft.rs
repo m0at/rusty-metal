@@ -5,6 +5,7 @@ use crate::metal_ctx::MetalCtx;
 use crate::shaders;
 use rand::Rng;
 use std::f32::consts::PI;
+use std::hint::black_box;
 
 pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, _n: usize) {
     let n = 1 << 20; // 1M elements, power of 2 for FFT
@@ -40,12 +41,12 @@ pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, _n: usize) {
             }
             half *= 2;
         }
-        let _ = buf;
+        black_box(buf);
     }, n, 8));
 
     // --- Scalar Rust: spectral power ---
     suite.add(bench_fn("spectral_power", "fft", "rust_scalar", || {
-        let _: Vec<f32> = data.iter().map(|c| c[0]*c[0] + c[1]*c[1]).collect();
+        black_box::<Vec<f32>>(data.iter().map(|c| c[0]*c[0] + c[1]*c[1]).collect());
     }, n, 8));
 
     // --- Metal GPU: FFT radix-2 ---

@@ -4,6 +4,7 @@ use crate::harness::{bench_fn, BenchSuite};
 use crate::metal_ctx::MetalCtx;
 use crate::shaders;
 use rand::Rng;
+use std::hint::black_box;
 
 pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, _n: usize) {
     let mut rng = rand::thread_rng();
@@ -24,7 +25,7 @@ pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, _n: usize) {
             }
             y[r] = sum;
         }
-        let _ = y;
+        black_box(y);
     }, total, 4));
 
     // --- Outer product ---
@@ -39,7 +40,7 @@ pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, _n: usize) {
                 out[i * op_n + j] = a[i] * b[j];
             }
         }
-        let _ = out;
+        black_box(out);
     }, op_n * op_n, 4));
 
     // --- Batched matmul (small) ---
@@ -60,7 +61,7 @@ pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, _n: usize) {
                 c[i * nn + j] = sum;
             }
         }
-        let _ = c;
+        black_box(c);
     }, m * nn * k, 4));
 
     // --- SpMV CSR ---
@@ -92,7 +93,7 @@ pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, _n: usize) {
             }
             y[r] = sum;
         }
-        let _ = y;
+        black_box(y);
     }, nnz, 4));
 
     // --- Metal GPU ---

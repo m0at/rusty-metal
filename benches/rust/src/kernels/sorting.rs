@@ -4,6 +4,7 @@ use crate::harness::{bench_fn, BenchSuite};
 use crate::metal_ctx::MetalCtx;
 use crate::shaders;
 use rand::Rng;
+use std::hint::black_box;
 
 pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, _n: usize) {
     let mut rng = rand::thread_rng();
@@ -16,7 +17,7 @@ pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, _n: usize) {
     suite.add(bench_fn("sort_radix", "sorting", "rust_scalar", || {
         let mut d = data.clone();
         d.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        let _ = d;
+        black_box(d);
     }, n, 4));
 
     // --- Scalar Rust: top-k ---
@@ -24,7 +25,7 @@ pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, _n: usize) {
     suite.add(bench_fn("topk_select", "sorting", "rust_scalar", || {
         let mut d = data.clone();
         d.select_nth_unstable_by(k, |a, b| b.partial_cmp(a).unwrap());
-        let _ = &d[..k];
+        black_box(&d[..k]);
     }, n, 4));
 
     // --- Scalar Rust: median ---
@@ -32,7 +33,7 @@ pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, _n: usize) {
         let mut d = data.clone();
         let mid = d.len() / 2;
         d.select_nth_unstable_by(mid, |a, b| a.partial_cmp(b).unwrap());
-        let _ = d[mid];
+        black_box(d[mid]);
     }, n, 4));
 
     // --- Scalar Rust: percentile ---
@@ -40,7 +41,7 @@ pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, _n: usize) {
         let mut d = data.clone();
         let idx = (d.len() as f64 * 0.95) as usize;
         d.select_nth_unstable_by(idx, |a, b| a.partial_cmp(b).unwrap());
-        let _ = d[idx];
+        black_box(d[idx]);
     }, n, 4));
 
     // --- Metal GPU: bitonic sort ---

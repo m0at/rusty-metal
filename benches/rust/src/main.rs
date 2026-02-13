@@ -63,6 +63,7 @@ fn main() {
         ("quantization", kernels::quantization::run),
         ("dot_products", kernels::dot_products::run),
         ("fused", kernels::fused::run),
+        ("fused_custom", kernels::fused_custom::run),
     ];
 
     for (name, run_fn) in &domains {

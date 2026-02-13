@@ -5,6 +5,7 @@ use crate::metal_ctx::MetalCtx;
 use crate::neon;
 use crate::shaders;
 use rand::Rng;
+use std::hint::black_box;
 
 pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, n: usize) {
     let mut rng = rand::thread_rng();
@@ -26,7 +27,7 @@ pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, n: usize) {
             }
             out[i] = sum;
         }
-        let _ = out;
+        black_box(out);
     }, total, 8));
 
     // --- Scalar Rust: cosine similarity ---
@@ -46,12 +47,19 @@ pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, n: usize) {
             }
             out[i] = dot / (norm_a.sqrt() * norm_b.sqrt() + 1e-8);
         }
-        let _ = out;
+        black_box(out);
     }, total, 8));
 
     // --- NEON SIMD: single large dot product ---
     suite.add(bench_fn("dot_batched", "dot_products", "neon_simd", || {
-        let _ = neon::dot_f32(&a, &b);
+        black_box(neon::dot_f32(&a, &b));
+    }, total, 8));
+
+    // --- NEON SIMD: batched cosine similarity ---
+    suite.add(bench_fn("cosine_similarity", "dot_products", "neon_simd", || {
+        let mut out = vec![0.0f32; batch];
+        neon::cosine_similarity_f32(&a, &b, dim, batch, &mut out);
+        black_box(out);
     }, total, 8));
 
     // --- Metal GPU ---
