@@ -8,6 +8,7 @@ if HAS_TORCH:
     import torch.nn.functional as F
 if HAS_MLX:
     import mlx.core as mx
+    import mlx.nn as nn
 
 
 def run(n: int = 10_000_000):
@@ -39,7 +40,7 @@ def run(n: int = 10_000_000):
         logits_mx = mx.array(logits_np)
         targets_mx = mx.array(targets_np)
         bench_fn("loss_cross_entropy", "loss", "mlx",
-                 lambda: mx.eval(mx.mean(mx.losses.cross_entropy(logits_mx, targets_mx))), total, sync=_sync_mlx)
+                 lambda: mx.eval(mx.mean(nn.losses.cross_entropy(logits_mx, targets_mx))), total, sync=_sync_mlx)
 
     # ── MSE ──
     bench_fn("loss_mse", "loss", "numpy",
