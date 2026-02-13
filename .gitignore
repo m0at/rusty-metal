@@ -1,7 +1,12 @@
 /target
 .DS_Store
 .claude/agents/
+agents/
+metal.md
+metal-kernel-hints.md
 benches/rust/target/
 benches/python/.venv/
 benches/python/uv.lock
+benches/python/**/__pycache__/
+benches/python/*.egg-info/
 benches/results/
