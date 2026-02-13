@@ -1,0 +1,14 @@
+[project]
+name = "rusty-metal-bench"
+version = "0.1.0"
+description = "Benchmark suite comparing Metal GPU kernels against numpy, PyTorch MPS, and MLX"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.26",
+    "torch>=2.2",
+    "mlx>=0.5",
+    "scipy>=1.12",
+]
+
+[project.scripts]
+bench = "bench.run_all:main"
