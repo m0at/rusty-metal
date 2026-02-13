@@ -65,6 +65,32 @@ A state machine that evaluates workload size, parallelism, memory requirements, 
 
 A pre-flight gate and runtime watchdog that probes memory pressure, thermal throttling, CPU load, and power source before and during workloads — all via lightweight no-sudo macOS commands (< 50ms). Blocks launches when memory is critical, warns about thermal throttling with cooling/placement guidance, and monitors long-running workloads in a background thread.
 
+## Benchmarks
+
+MatMul performance on Apple M5 (10-core GPU, 24GB unified RAM):
+
+### 2048x2048 fp32
+
+| Backend | GFLOPS | Time | Type |
+|---------|--------|------|------|
+| MLX | 6,561 | 2.6ms | GPU (Apple framework) |
+| MPS/PyTorch | 2,917 | 5.9ms | GPU (PyTorch Metal) |
+| NumPy/Accelerate | 1,430 | 12.0ms | CPU (Apple BLAS) |
+| Rust+Metal (naive) | 304 | 56ms | GPU (custom shader) |
+
+### 1024x1024 fp32
+
+| Backend | GFLOPS | Time | Type |
+|---------|--------|------|------|
+| MPS/PyTorch | 1,721 | 1.3ms | GPU |
+| MLX | 1,600 | 1.3ms | GPU |
+| NumPy/Accelerate | 1,421 | 1.5ms | CPU |
+| Rust+Metal (naive) | 272 | 7.0ms | GPU |
+
+The "naive" Rust+Metal shader uses a per-element loop with no shared memory tiling. MLX and MPS use heavily optimized tiled kernels. The kernel hints catalog documents the tiling strategies (16x16/32x32 threadgroup memory, coalesced access patterns) needed to close this gap — that's exactly what the agent helps you write.
+
+At small sizes (256x256), Apple's Accelerate BLAS on CPU beats all GPU backends due to kernel launch overhead. The agent's compute routing state machine accounts for this: workloads under ~1000 elements route to CPU automatically.
+
 ## How it works
 
 The agent prompt and kernel reference live in `content/` as markdown files. They're embedded into the binary at compile time via `include_str!`, so the CLI is a single zero-dependency binary with no runtime file access needed. Running `rusty-metal init` writes them into your project's `.claude/agents/` directory where Claude Code picks them up.
