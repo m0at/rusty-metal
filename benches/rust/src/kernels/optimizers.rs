@@ -5,6 +5,7 @@ use crate::metal_ctx::MetalCtx;
 use crate::neon;
 use crate::shaders;
 use rand::Rng;
+use std::hint::black_box;
 
 pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, n: usize) {
     let mut rng = rand::thread_rng();
@@ -16,7 +17,7 @@ pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, n: usize) {
     suite.add(bench_fn("opt_sgd", "optimizers", "rust_scalar", || {
         let mut p = params.clone();
         for i in 0..n { p[i] -= lr * grads[i]; }
-        let _ = p;
+        black_box(p);
     }, n, 8));
 
     suite.add(bench_fn("opt_sgd_momentum", "optimizers", "rust_scalar", || {
@@ -27,7 +28,7 @@ pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, n: usize) {
             vel[i] = momentum * vel[i] + grads[i];
             p[i] -= lr * vel[i];
         }
-        let _ = p;
+        black_box(p);
     }, n, 12));
 
     suite.add(bench_fn("opt_adam", "optimizers", "rust_scalar", || {
@@ -42,7 +43,7 @@ pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, n: usize) {
             v[i] = beta2 * v[i] + (1.0 - beta2) * grads[i] * grads[i];
             p[i] -= lr * m[i] / (v[i].sqrt() + eps);
         }
-        let _ = p;
+        black_box(p);
     }, n, 20));
 
     suite.add(bench_fn("opt_adamw", "optimizers", "rust_scalar", || {
@@ -59,27 +60,35 @@ pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, n: usize) {
             v[i] = beta2 * v[i] + (1.0 - beta2) * grads[i] * grads[i];
             p[i] -= lr * m[i] / (v[i].sqrt() + eps);
         }
-        let _ = p;
+        black_box(p);
     }, n, 20));
 
     suite.add(bench_fn("grad_clip_value", "optimizers", "rust_scalar", || {
-        let _: Vec<f32> = grads.iter().map(|&g| g.clamp(-1.0, 1.0)).collect();
+        black_box::<Vec<f32>>(grads.iter().map(|&g| g.clamp(-1.0, 1.0)).collect());
     }, n, 4));
 
     suite.add(bench_fn("grad_clip_norm", "optimizers", "rust_scalar", || {
         let norm: f32 = grads.iter().map(|g| g * g).sum::<f32>().sqrt();
         let max_norm = 1.0f32;
         if norm > max_norm {
-            let _: Vec<f32> = grads.iter().map(|&g| g * max_norm / norm).collect();
+            black_box::<Vec<f32>>(grads.iter().map(|&g| g * max_norm / norm).collect());
         }
     }, n, 4));
 
-    // --- NEON SIMD (SGD) ---
+    // --- NEON SIMD ---
     suite.add(bench_fn("opt_sgd", "optimizers", "neon_simd", || {
         let mut p = params.clone();
         neon::sgd_f32(&mut p, &grads, lr);
-        let _ = p;
+        black_box(p);
     }, n, 8));
+
+    suite.add(bench_fn("opt_adam", "optimizers", "neon_simd", || {
+        let mut p = params.clone();
+        let mut m = vec![0.0f32; n];
+        let mut v = vec![0.0f32; n];
+        neon::adam_f32(&mut p, &grads, &mut m, &mut v, lr, 0.9, 0.999, 1e-8);
+        black_box(p);
+    }, n, 20));
 
     // --- Metal GPU ---
     let buf_params = ctx.buffer_from_slice(&params);

@@ -4,6 +4,7 @@ use crate::harness::{bench_fn, BenchSuite};
 use crate::metal_ctx::MetalCtx;
 use crate::shaders;
 use rand::Rng;
+use std::hint::black_box;
 
 pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, n: usize) {
     let rows = 4096;
@@ -23,7 +24,7 @@ pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, n: usize) {
                 out[r * cols + i] = (x - max).exp() / sum;
             }
         }
-        let _ = out;
+        black_box(out);
     }, total, 4));
 
     suite.add(bench_fn("log_softmax", "softmax", "rust_scalar", || {
@@ -37,7 +38,7 @@ pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, n: usize) {
                 out[r * cols + i] = (x - max) - log_sum;
             }
         }
-        let _ = out;
+        black_box(out);
     }, total, 4));
 
     suite.add(bench_fn("softmax_online", "softmax", "rust_scalar", || {
@@ -58,7 +59,7 @@ pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, n: usize) {
                 out[r * cols + i] = (x - max).exp() / sum;
             }
         }
-        let _ = out;
+        black_box(out);
     }, total, 4));
 
     // --- Metal GPU ---

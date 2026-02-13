@@ -5,6 +5,7 @@ use crate::metal_ctx::MetalCtx;
 use crate::neon;
 use crate::shaders;
 use rand::Rng;
+use std::hint::black_box;
 
 pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, n: usize) {
     let mut rng = rand::thread_rng();
@@ -23,38 +24,38 @@ pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, n: usize) {
     ] {
         let data = a.clone();
         suite.add(bench_fn(name, "elementwise", "rust_scalar", || {
-            let _: Vec<f32> = data.iter().map(|&x| op(x)).collect();
+            black_box::<Vec<f32>>(data.iter().map(|&x| op(x)).collect());
         }, n, 4));
     }
 
     // --- Scalar Rust (clamp, abs) ---
     suite.add(bench_fn("map_clamp", "elementwise", "rust_scalar", || {
-        let _: Vec<f32> = a.iter().map(|&x| x.clamp(-1.0, 1.0)).collect();
+        black_box::<Vec<f32>>(a.iter().map(|&x| x.clamp(-1.0, 1.0)).collect());
     }, n, 4));
 
     suite.add(bench_fn("map_abs", "elementwise", "rust_scalar", || {
-        let _: Vec<f32> = a.iter().map(|&x| x.abs()).collect();
+        black_box::<Vec<f32>>(a.iter().map(|&x| x.abs()).collect());
     }, n, 4));
 
     // --- Scalar Rust (binary) ---
     suite.add(bench_fn("map_add", "elementwise", "rust_scalar", || {
-        let _: Vec<f32> = a.iter().zip(&b).map(|(x, y)| x + y).collect();
+        black_box::<Vec<f32>>(a.iter().zip(&b).map(|(x, y)| x + y).collect());
     }, n, 8));
 
     suite.add(bench_fn("map_mul", "elementwise", "rust_scalar", || {
-        let _: Vec<f32> = a.iter().zip(&b).map(|(x, y)| x * y).collect();
+        black_box::<Vec<f32>>(a.iter().zip(&b).map(|(x, y)| x * y).collect());
     }, n, 8));
 
     suite.add(bench_fn("map_div", "elementwise", "rust_scalar", || {
-        let _: Vec<f32> = a.iter().zip(&b).map(|(x, y)| x / y).collect();
+        black_box::<Vec<f32>>(a.iter().zip(&b).map(|(x, y)| x / y).collect());
     }, n, 8));
 
     suite.add(bench_fn("map_fma", "elementwise", "rust_scalar", || {
-        let _: Vec<f32> = a.iter().zip(&b).zip(&c).map(|((x, y), z)| x * y + z).collect();
+        black_box::<Vec<f32>>(a.iter().zip(&b).zip(&c).map(|((x, y), z)| x * y + z).collect());
     }, n, 12));
 
     suite.add(bench_fn("map_compare", "elementwise", "rust_scalar", || {
-        let _: Vec<f32> = a.iter().zip(&b).map(|(x, y)| if x > y { 1.0 } else { 0.0 }).collect();
+        black_box::<Vec<f32>>(a.iter().zip(&b).map(|(x, y)| if x > y { 1.0 } else { 0.0 }).collect());
     }, n, 8));
 
     // --- NEON SIMD ---
@@ -77,6 +78,34 @@ pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, n: usize) {
     suite.add(bench_fn("map_fma", "elementwise", "neon_simd", || {
         neon::fma_f32(&a, &b, &c, &mut out);
     }, n, 12));
+
+    suite.add(bench_fn("map_exp", "elementwise", "neon_simd", || {
+        neon::exp_f32(&a, &mut out);
+    }, n, 4));
+
+    suite.add(bench_fn("map_log", "elementwise", "neon_simd", || {
+        neon::log_f32(&b, &mut out);
+    }, n, 4));
+
+    suite.add(bench_fn("map_sigmoid", "elementwise", "neon_simd", || {
+        neon::sigmoid_f32(&a, &mut out);
+    }, n, 4));
+
+    suite.add(bench_fn("map_tanh", "elementwise", "neon_simd", || {
+        neon::tanh_f32(&a, &mut out);
+    }, n, 4));
+
+    suite.add(bench_fn("map_softplus", "elementwise", "neon_simd", || {
+        neon::softplus_f32(&a, &mut out);
+    }, n, 4));
+
+    suite.add(bench_fn("map_div", "elementwise", "neon_simd", || {
+        neon::div_f32(&a, &b, &mut out);
+    }, n, 8));
+
+    suite.add(bench_fn("map_compare", "elementwise", "neon_simd", || {
+        neon::compare_gt_f32(&a, &b, &mut out);
+    }, n, 8));
 
     // --- Metal GPU ---
     let buf_a = ctx.buffer_from_slice(&a);

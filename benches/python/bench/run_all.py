@@ -27,6 +27,7 @@ from bench.kernels import (
     quantization,
     dot_products,
     fused,
+    fused_custom,
 )
 
 DOMAINS = {
@@ -50,6 +51,7 @@ DOMAINS = {
     "quantization": quantization,
     "dot_products": dot_products,
     "fused": fused,
+    "fused_custom": fused_custom,
 }
 
 

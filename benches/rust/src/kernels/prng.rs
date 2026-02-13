@@ -4,31 +4,32 @@ use crate::harness::{bench_fn, BenchSuite};
 use crate::metal_ctx::MetalCtx;
 use crate::shaders;
 use rand::Rng;
+use std::hint::black_box;
 
 pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, n: usize) {
     let mut rng = rand::thread_rng();
 
     // --- Scalar Rust (using rand crate) ---
     suite.add(bench_fn("prng_philox", "prng", "rust_scalar", || {
-        let _: Vec<[u32; 4]> = (0..n).map(|_| [rng.gen(), rng.gen(), rng.gen(), rng.gen()]).collect();
+        black_box::<Vec<[u32; 4]>>((0..n).map(|_| [rng.gen(), rng.gen(), rng.gen(), rng.gen()]).collect());
     }, n, 16));
 
     suite.add(bench_fn("prng_uniform_f32", "prng", "rust_scalar", || {
-        let _: Vec<f32> = (0..n).map(|_| rng.gen_range(0.0..1.0)).collect();
+        black_box::<Vec<f32>>((0..n).map(|_| rng.gen_range(0.0..1.0)).collect());
     }, n, 4));
 
     suite.add(bench_fn("prng_normal_f32", "prng", "rust_scalar", || {
         // Box-Muller
-        let _: Vec<f32> = (0..n).map(|_| {
+        black_box::<Vec<f32>>((0..n).map(|_| {
             let u1: f32 = rng.gen_range(1e-7..1.0);
             let u2: f32 = rng.gen();
             (-2.0 * u1.ln()).sqrt() * (2.0 * std::f32::consts::PI * u2).cos()
-        }).collect();
+        }).collect());
     }, n, 4));
 
     suite.add(bench_fn("prng_dropout_mask", "prng", "rust_scalar", || {
         let keep_prob = 0.9f32;
-        let _: Vec<u8> = (0..n).map(|_| if rng.gen::<f32>() < keep_prob { 1 } else { 0 }).collect();
+        black_box::<Vec<u8>>((0..n).map(|_| if rng.gen::<f32>() < keep_prob { 1 } else { 0 }).collect());
     }, n, 1));
 
     // --- Metal GPU ---

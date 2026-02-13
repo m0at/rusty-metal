@@ -5,6 +5,7 @@ use crate::metal_ctx::MetalCtx;
 use crate::neon;
 use crate::shaders;
 use rand::Rng;
+use std::hint::black_box;
 
 pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, n: usize) {
     let mut rng = rand::thread_rng();
@@ -12,41 +13,41 @@ pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, n: usize) {
 
     // --- Scalar Rust ---
     suite.add(bench_fn("reduce_sum", "reductions", "rust_scalar", || {
-        let _: f32 = data.iter().sum();
+        black_box::<f32>(data.iter().sum());
     }, n, 4));
 
     suite.add(bench_fn("reduce_mean", "reductions", "rust_scalar", || {
-        let _: f32 = data.iter().sum::<f32>() / data.len() as f32;
+        black_box::<f32>(data.iter().sum::<f32>() / data.len() as f32);
     }, n, 4));
 
     suite.add(bench_fn("reduce_min", "reductions", "rust_scalar", || {
-        let _ = data.iter().cloned().fold(f32::MAX, f32::min);
+        black_box(data.iter().cloned().fold(f32::MAX, f32::min));
     }, n, 4));
 
     suite.add(bench_fn("reduce_max", "reductions", "rust_scalar", || {
-        let _ = data.iter().cloned().fold(f32::MIN, f32::max);
+        black_box(data.iter().cloned().fold(f32::MIN, f32::max));
     }, n, 4));
 
     suite.add(bench_fn("reduce_l2", "reductions", "rust_scalar", || {
-        let _ = data.iter().map(|x| x * x).sum::<f32>().sqrt();
+        black_box(data.iter().map(|x| x * x).sum::<f32>().sqrt());
     }, n, 4));
 
     suite.add(bench_fn("reduce_var", "reductions", "rust_scalar", || {
         let mean = data.iter().sum::<f32>() / n as f32;
-        let _ = data.iter().map(|x| (x - mean).powi(2)).sum::<f32>() / n as f32;
+        black_box(data.iter().map(|x| (x - mean).powi(2)).sum::<f32>() / n as f32);
     }, n, 4));
 
     suite.add(bench_fn("reduce_stddev", "reductions", "rust_scalar", || {
         let mean = data.iter().sum::<f32>() / n as f32;
-        let _ = (data.iter().map(|x| (x - mean).powi(2)).sum::<f32>() / n as f32).sqrt();
+        black_box((data.iter().map(|x| (x - mean).powi(2)).sum::<f32>() / n as f32).sqrt());
     }, n, 4));
 
     suite.add(bench_fn("reduce_argmax", "reductions", "rust_scalar", || {
-        let _ = data.iter().enumerate().max_by(|a, b| a.1.partial_cmp(b.1).unwrap());
+        black_box(data.iter().enumerate().max_by(|a, b| a.1.partial_cmp(b.1).unwrap()));
     }, n, 4));
 
     suite.add(bench_fn("reduce_argmin", "reductions", "rust_scalar", || {
-        let _ = data.iter().enumerate().min_by(|a, b| a.1.partial_cmp(b.1).unwrap());
+        black_box(data.iter().enumerate().min_by(|a, b| a.1.partial_cmp(b.1).unwrap()));
     }, n, 4));
 
     suite.add(bench_fn("reduce_histogram", "reductions", "rust_scalar", || {
@@ -55,24 +56,44 @@ pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, n: usize) {
             let bin = ((v * 128.0 + 128.0).clamp(0.0, 255.0)) as usize;
             bins[bin] += 1;
         }
-        let _ = bins;
+        black_box(bins);
     }, n, 4));
 
     // --- NEON SIMD ---
     suite.add(bench_fn("reduce_sum", "reductions", "neon_simd", || {
-        let _ = neon::sum_f32(&data);
+        black_box(neon::sum_f32(&data));
     }, n, 4));
 
     suite.add(bench_fn("reduce_min", "reductions", "neon_simd", || {
-        let _ = neon::min_f32(&data);
+        black_box(neon::min_f32(&data));
     }, n, 4));
 
     suite.add(bench_fn("reduce_max", "reductions", "neon_simd", || {
-        let _ = neon::max_f32(&data);
+        black_box(neon::max_f32(&data));
     }, n, 4));
 
     suite.add(bench_fn("reduce_l2", "reductions", "neon_simd", || {
-        let _ = neon::l2_squared_f32(&data).sqrt();
+        black_box(neon::l2_squared_f32(&data).sqrt());
+    }, n, 4));
+
+    suite.add(bench_fn("reduce_mean", "reductions", "neon_simd", || {
+        black_box(neon::mean_f32(&data));
+    }, n, 4));
+
+    suite.add(bench_fn("reduce_var", "reductions", "neon_simd", || {
+        black_box(neon::variance_f32(&data));
+    }, n, 4));
+
+    suite.add(bench_fn("reduce_stddev", "reductions", "neon_simd", || {
+        black_box(neon::variance_f32(&data).sqrt());
+    }, n, 4));
+
+    suite.add(bench_fn("reduce_argmax", "reductions", "neon_simd", || {
+        black_box(neon::argmax_f32(&data));
+    }, n, 4));
+
+    suite.add(bench_fn("reduce_argmin", "reductions", "neon_simd", || {
+        black_box(neon::argmin_f32(&data));
     }, n, 4));
 
     // --- Metal GPU ---

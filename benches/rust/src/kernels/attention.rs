@@ -4,6 +4,7 @@ use crate::harness::{bench_fn, BenchSuite};
 use crate::metal_ctx::MetalCtx;
 use crate::shaders;
 use rand::Rng;
+use std::hint::black_box;
 
 pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, _n: usize) {
     let seq_len = 512;
@@ -32,7 +33,7 @@ pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, _n: usize) {
                 out[row * head_dim + col] = sum;
             }
         }
-        let _ = out;
+        black_box(out);
     }, total, 4));
 
     // --- Scalar Rust: RoPE ---
@@ -62,7 +63,7 @@ pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, _n: usize) {
                 x[pos * head_dim + d + half_dim] = x0 * s + x1 * c;
             }
         }
-        let _ = x;
+        black_box(x);
     }, total, 4));
 
     // --- Scalar Rust: ALiBi ---
@@ -75,7 +76,7 @@ pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, _n: usize) {
                 scores[q_pos * seq_len + k_pos] += slope * (k_pos as f32 - q_pos as f32);
             }
         }
-        let _ = scores;
+        black_box(scores);
     }, seq_len * seq_len, 4));
 
     // --- Metal GPU ---

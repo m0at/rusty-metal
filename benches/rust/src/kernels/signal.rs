@@ -4,6 +4,7 @@ use crate::harness::{bench_fn, BenchSuite};
 use crate::metal_ctx::MetalCtx;
 use crate::shaders;
 use rand::Rng;
+use std::hint::black_box;
 
 pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, n: usize) {
     let mut rng = rand::thread_rng();
@@ -25,15 +26,15 @@ pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, n: usize) {
             }
             out[i] = sum;
         }
-        let _ = out;
+        black_box(out);
     }, n, 4));
 
     // --- Scalar Rust: window apply (Hanning) ---
     suite.add(bench_fn("window_apply", "signal", "rust_scalar", || {
-        let _: Vec<f32> = signal.iter().enumerate().map(|(i, &x)| {
+        black_box::<Vec<f32>>(signal.iter().enumerate().map(|(i, &x)| {
             let w = 0.5 * (1.0 - (2.0 * std::f32::consts::PI * i as f32 / (n - 1) as f32).cos());
             x * w
-        }).collect();
+        }).collect());
     }, n, 4));
 
     // --- Scalar Rust: FIR filter ---
@@ -48,7 +49,7 @@ pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, n: usize) {
             }
             out[i] = sum;
         }
-        let _ = out;
+        black_box(out);
     }, n, 4));
 
     // --- Metal GPU ---

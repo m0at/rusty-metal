@@ -2,8 +2,10 @@
 
 use crate::harness::{bench_fn, BenchSuite};
 use crate::metal_ctx::MetalCtx;
+use crate::neon;
 use crate::shaders;
 use rand::Rng;
+use std::hint::black_box;
 
 pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, n: usize) {
     let dim = 1024;
@@ -26,7 +28,7 @@ pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, n: usize) {
                 out[b * dim + i] = gamma[i] * (x - mean) * inv_std + beta[i];
             }
         }
-        let _ = out;
+        black_box(out);
     }, total, 4));
 
     suite.add(bench_fn("rms_norm", "normalization", "rust_scalar", || {
@@ -39,14 +41,14 @@ pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, n: usize) {
                 out[b * dim + i] = gamma[i] * x * inv_rms;
             }
         }
-        let _ = out;
+        black_box(out);
     }, total, 4));
 
     suite.add(bench_fn("batch_norm", "normalization", "rust_scalar", || {
         let mean: f32 = data.iter().sum::<f32>() / total as f32;
         let var: f32 = data.iter().map(|&x| (x - mean).powi(2)).sum::<f32>() / total as f32;
         let inv_std = 1.0 / (var + 1e-5).sqrt();
-        let _: Vec<f32> = data.iter().map(|&x| gamma[0] * (x - mean) * inv_std + beta[0]).collect();
+        black_box::<Vec<f32>>(data.iter().map(|&x| gamma[0] * (x - mean) * inv_std + beta[0]).collect());
     }, total, 4));
 
     suite.add(bench_fn("group_norm", "normalization", "rust_scalar", || {
@@ -63,7 +65,20 @@ pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, n: usize) {
                 out[g + i] = gamma[0] * (x - mean) * inv_std + beta[0];
             }
         }
-        let _ = out;
+        black_box(out);
+    }, total, 4));
+
+    // --- NEON SIMD ---
+    suite.add(bench_fn("layer_norm", "normalization", "neon_simd", || {
+        let mut out = vec![0.0f32; total];
+        neon::layer_norm_f32(&data, &gamma, &beta, dim, &mut out);
+        black_box(out);
+    }, total, 4));
+
+    suite.add(bench_fn("rms_norm", "normalization", "neon_simd", || {
+        let mut out = vec![0.0f32; total];
+        neon::rms_norm_f32(&data, &gamma, dim, &mut out);
+        black_box(out);
     }, total, 4));
 
     // --- Metal GPU ---

@@ -5,6 +5,7 @@ use crate::metal_ctx::MetalCtx;
 use crate::neon;
 use crate::shaders;
 use rand::Rng;
+use std::hint::black_box;
 
 pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, n: usize) {
     let mut rng = rand::thread_rng();
@@ -13,28 +14,28 @@ pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, n: usize) {
 
     // --- Scalar Rust ---
     suite.add(bench_fn("map_reduce_square_sum", "fused", "rust_scalar", || {
-        let _: f32 = data.iter().map(|x| x * x).sum();
+        black_box::<f32>(data.iter().map(|x| x * x).sum());
     }, n, 4));
 
     suite.add(bench_fn("map_reduce_abs_sum", "fused", "rust_scalar", || {
-        let _: f32 = data.iter().map(|x| x.abs()).sum();
+        black_box::<f32>(data.iter().map(|x| x.abs()).sum());
     }, n, 4));
 
     suite.add(bench_fn("map_reduce_masked_sum", "fused", "rust_scalar", || {
-        let _: f32 = data.iter().zip(&mask).map(|(d, m)| d * m).sum();
+        black_box::<f32>(data.iter().zip(&mask).map(|(d, m)| d * m).sum());
     }, n, 8));
 
     suite.add(bench_fn("map_reduce_threshold_count", "fused", "rust_scalar", || {
-        let _: usize = data.iter().filter(|&&x| x > 0.0).count();
+        black_box::<usize>(data.iter().filter(|&&x| x > 0.0).count());
     }, n, 4));
 
     // --- NEON SIMD ---
     suite.add(bench_fn("map_reduce_square_sum", "fused", "neon_simd", || {
-        let _ = neon::l2_squared_f32(&data);
+        black_box(neon::l2_squared_f32(&data));
     }, n, 4));
 
     suite.add(bench_fn("map_reduce_masked_sum", "fused", "neon_simd", || {
-        let _ = neon::dot_f32(&data, &mask);
+        black_box(neon::dot_f32(&data, &mask));
     }, n, 8));
 
     // --- Metal GPU ---

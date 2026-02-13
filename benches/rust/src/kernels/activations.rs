@@ -5,6 +5,7 @@ use crate::metal_ctx::MetalCtx;
 use crate::neon;
 use crate::shaders;
 use rand::Rng;
+use std::hint::black_box;
 
 pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, n: usize) {
     let mut rng = rand::thread_rng();
@@ -13,34 +14,46 @@ pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, n: usize) {
 
     // --- Scalar Rust ---
     suite.add(bench_fn("map_relu", "activations", "rust_scalar", || {
-        let _: Vec<f32> = data.iter().map(|&x| x.max(0.0)).collect();
+        black_box::<Vec<f32>>(data.iter().map(|&x| x.max(0.0)).collect());
     }, n, 4));
 
     suite.add(bench_fn("map_leaky_relu", "activations", "rust_scalar", || {
-        let _: Vec<f32> = data.iter().map(|&x| if x > 0.0 { x } else { 0.01 * x }).collect();
+        black_box::<Vec<f32>>(data.iter().map(|&x| if x > 0.0 { x } else { 0.01 * x }).collect());
     }, n, 4));
 
     suite.add(bench_fn("map_elu", "activations", "rust_scalar", || {
-        let _: Vec<f32> = data.iter().map(|&x| if x > 0.0 { x } else { x.exp() - 1.0 }).collect();
+        black_box::<Vec<f32>>(data.iter().map(|&x| if x > 0.0 { x } else { x.exp() - 1.0 }).collect());
     }, n, 4));
 
     suite.add(bench_fn("map_gelu", "activations", "rust_scalar", || {
-        let _: Vec<f32> = data.iter().map(|&x| {
+        black_box::<Vec<f32>>(data.iter().map(|&x| {
             0.5 * x * (1.0 + (0.7978845608 * (x + 0.044715 * x * x * x) as f64).tanh() as f32)
-        }).collect();
+        }).collect());
     }, n, 4));
 
     suite.add(bench_fn("map_silu", "activations", "rust_scalar", || {
-        let _: Vec<f32> = data.iter().map(|&x| x / (1.0 + (-x).exp())).collect();
+        black_box::<Vec<f32>>(data.iter().map(|&x| x / (1.0 + (-x).exp())).collect());
     }, n, 4));
 
     suite.add(bench_fn("map_mish", "activations", "rust_scalar", || {
-        let _: Vec<f32> = data.iter().map(|&x| x * (1.0f32 + x.exp()).ln().tanh()).collect();
+        black_box::<Vec<f32>>(data.iter().map(|&x| x * (1.0f32 + x.exp()).ln().tanh()).collect());
     }, n, 4));
 
-    // --- NEON SIMD (ReLU) ---
+    // --- NEON SIMD ---
     suite.add(bench_fn("map_relu", "activations", "neon_simd", || {
         neon::relu_f32(&data, &mut out);
+    }, n, 4));
+
+    suite.add(bench_fn("map_leaky_relu", "activations", "neon_simd", || {
+        neon::leaky_relu_f32(&data, 0.01, &mut out);
+    }, n, 4));
+
+    suite.add(bench_fn("map_gelu", "activations", "neon_simd", || {
+        neon::gelu_f32(&data, &mut out);
+    }, n, 4));
+
+    suite.add(bench_fn("map_silu", "activations", "neon_simd", || {
+        neon::silu_f32(&data, &mut out);
     }, n, 4));
 
     // --- Metal GPU ---

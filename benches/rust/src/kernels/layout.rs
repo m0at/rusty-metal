@@ -4,6 +4,7 @@ use crate::harness::{bench_fn, BenchSuite};
 use crate::metal_ctx::MetalCtx;
 use crate::shaders;
 use rand::Rng;
+use std::hint::black_box;
 
 pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, _n: usize) {
     let mut rng = rand::thread_rng();
@@ -21,7 +22,7 @@ pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, _n: usize) {
                 out[c * rows + r] = mat[r * cols + c];
             }
         }
-        let _ = out;
+        black_box(out);
     }, total, 4));
 
     // --- AoS to SoA ---
@@ -38,7 +39,7 @@ pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, _n: usize) {
         for (i, v) in aos.iter().enumerate() {
             x[i] = v[0]; y[i] = v[1]; z[i] = v[2]; w[i] = v[3];
         }
-        let _ = (x, y, z, w);
+        black_box((x, y, z, w));
     }, n_structs * 4, 4));
 
     // --- SoA to AoS ---
@@ -52,7 +53,7 @@ pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, _n: usize) {
         for i in 0..n_structs {
             out[i] = [soa_x[i], soa_y[i], soa_z[i], soa_w[i]];
         }
-        let _ = out;
+        black_box(out);
     }, n_structs * 4, 4));
 
     // --- Metal GPU ---

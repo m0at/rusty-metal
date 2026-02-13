@@ -41,14 +41,13 @@ impl MetalCtx {
         &self.pipelines[name]
     }
 
-    /// Create a Metal buffer from a slice.
+    /// Create a Metal buffer from a slice (copies data into Metal-managed memory).
     pub fn buffer_from_slice<T>(&self, data: &[T]) -> Buffer {
         let bytes = std::mem::size_of_val(data);
-        self.device.new_buffer_with_bytes_no_copy(
+        self.device.new_buffer_with_data(
             data.as_ptr() as *const _,
             bytes as u64,
             MTLResourceOptions::StorageModeShared,
-            None,
         )
     }
 

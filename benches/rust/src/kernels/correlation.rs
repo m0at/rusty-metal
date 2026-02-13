@@ -5,6 +5,7 @@ use crate::metal_ctx::MetalCtx;
 use crate::neon;
 use crate::shaders;
 use rand::Rng;
+use std::hint::black_box;
 
 pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, n: usize) {
     let mut rng = rand::thread_rng();
@@ -19,28 +20,28 @@ pub fn run(suite: &mut BenchSuite, ctx: &mut MetalCtx, n: usize) {
         let cov: f32 = x.iter().zip(&y).map(|(a, b)| (a - mx) * (b - my)).sum();
         let sx: f32 = x.iter().map(|a| (a - mx).powi(2)).sum::<f32>().sqrt();
         let sy: f32 = y.iter().map(|b| (b - my).powi(2)).sum::<f32>().sqrt();
-        let _ = cov / (sx * sy + 1e-8);
+        black_box(cov / (sx * sy + 1e-8));
     }, n, 8));
 
     suite.add(bench_fn("reduce_covariance", "correlation", "rust_scalar", || {
         let mx = x.iter().sum::<f32>() / n as f32;
         let my = y.iter().sum::<f32>() / n as f32;
-        let _ : f32 = x.iter().zip(&y).map(|(a, b)| (a - mx) * (b - my)).sum::<f32>() / n as f32;
+        black_box::<f32>(x.iter().zip(&y).map(|(a, b)| (a - mx) * (b - my)).sum::<f32>() / n as f32);
     }, n, 8));
 
     suite.add(bench_fn("reduce_weighted_sum", "correlation", "rust_scalar", || {
-        let _: f32 = x.iter().zip(&w).map(|(a, b)| a * b).sum();
+        black_box::<f32>(x.iter().zip(&w).map(|(a, b)| a * b).sum());
     }, n, 8));
 
     suite.add(bench_fn("reduce_weighted_mean", "correlation", "rust_scalar", || {
         let ws: f32 = x.iter().zip(&w).map(|(a, b)| a * b).sum();
         let wt: f32 = w.iter().sum();
-        let _ = ws / (wt + 1e-8);
+        black_box(ws / (wt + 1e-8));
     }, n, 8));
 
     // --- NEON SIMD ---
     suite.add(bench_fn("reduce_weighted_sum", "correlation", "neon_simd", || {
-        let _ = neon::dot_f32(&x, &w);
+        black_box(neon::dot_f32(&x, &w));
     }, n, 8));
 
     // --- Metal GPU ---
